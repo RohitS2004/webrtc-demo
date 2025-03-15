@@ -9,6 +9,12 @@ const App = () => {
     const remoteSdpOfferRef = useRef<HTMLTextAreaElement>(null); // for the remote sdp offer
     const remoteSdpAnswerRef = useRef<HTMLTextAreaElement>(null); // for the remote sdp answer
 
+    const localIceCandidates = useRef<HTMLTextAreaElement>(null);
+    const remoteIceCandidates = useRef<HTMLTextAreaElement>(null);
+
+    const [localIce, setLocalIce] = useState<RTCIceCandidate[]>([]);
+    // const [remoteIce, setRemoteIce] = useState();
+
     const [peerConnection, setPeerConnection] =
         useState<RTCPeerConnection | null>(null);
 
@@ -33,7 +39,9 @@ const App = () => {
     const handleRemoteSdpOffer = () => {
         // When the user clicks on the add sdp offer button the input value should be set to the remoteDescription
         const remoteDescription = JSON.parse(remoteSdpOfferRef.current!.value);
-        peerConnection?.setRemoteDescription(new RTCSessionDescription(remoteDescription));
+        peerConnection?.setRemoteDescription(
+            new RTCSessionDescription(remoteDescription)
+        );
 
         remoteSdpOfferRef.current!.value = "";
     };
@@ -41,31 +49,60 @@ const App = () => {
     const handleRemoteSdpAnswer = () => {
         // When the user clicks on the add sdp answer button the input value should be set to the remoteDescription
         const remoteDescription = JSON.parse(remoteSdpAnswerRef.current!.value);
-        peerConnection?.setRemoteDescription(new RTCSessionDescription(remoteDescription));
+        peerConnection?.setRemoteDescription(
+            new RTCSessionDescription(remoteDescription)
+        );
 
         remoteSdpAnswerRef.current!.value = "";
     };
 
+    const handleLocalIce = () => {
+        localIceCandidates.current?.classList.add("blur-xs");
+        const localIceJsonType = JSON.stringify(localIce);
+        localIceCandidates.current!.value = localIceJsonType;
+    };
+
+    const handleRemoteIce = () => {
+        const remoteIceJsonType = remoteIceCandidates.current!.value;
+        const remoteIceOriginal: RTCIceCandidate[] =
+            JSON.parse(remoteIceJsonType);
+        remoteIceOriginal.forEach((ic) => {
+            peerConnection?.addIceCandidate(ic);
+        });
+
+        remoteIceCandidates.current!.value = "";
+    };
+
     useEffect(() => {
-        const pc = new RTCPeerConnection();
+        const pc = new RTCPeerConnection({
+            iceServers: [], // No STUN/TURN server while using localhost
+        });
         setPeerConnection(pc);
 
+        pc.onicecandidate = (e) => {
+            if (e.candidate) {
+                // Set all these ice to the local ice state
+                setLocalIce((pre) => [...pre, e.candidate!]);
+            }
+        };
+
         pc.onconnectionstatechange = () => {
-          if (pc.connectionState === "connected") {
-            alert(`Connected Successfully`);
-          }
-        }
+            if (pc.connectionState === "connected") {
+                alert(`Connected Successfully`);
+            }
+        };
 
         pc.onsignalingstatechange = () => {
-          console.log("Signaling State: ", pc.signalingState);
-        }
+            console.log("Signaling State: ", pc.signalingState);
+        };
 
         pc.ontrack = (e) => {
-          if (remoteVideoRef.current) {
-            console.log("Remote Track Received Line 75: ", e.streams);
-            remoteVideoRef.current.srcObject = e.streams[0];
-          }
-        }
+            // Whenever we receive the media track from the remote peer this event will be triggered
+            console.log("Remote Track Received Line 75: ", e.streams[0]);
+            const remoteMediaStream = e.streams[0];
+
+            remoteVideoRef.current!.srcObject = remoteMediaStream;
+        };
 
         navigator.mediaDevices
             .getUserMedia({
@@ -86,19 +123,19 @@ const App = () => {
                 },
             })
             .then((stream: MediaStream) => {
+                // console.log(stream);
                 localVideoRef.current!.srcObject = stream;
 
                 // Add all the track to the peer connection
                 stream.getTracks().forEach((track) => {
-                  pc.addTrack(track, stream);
-                })
+                    pc.addTrack(track, stream);
+                });
             });
 
         return () => {
-          pc.close();
-          setPeerConnection(null);
-        }
-
+            pc.close();
+            setPeerConnection(null);
+        };
     }, []);
 
     return (
@@ -118,7 +155,7 @@ const App = () => {
                     <video
                         autoPlay
                         ref={remoteVideoRef}
-                        className="border-4 border-green-500 aspect-square w-md -scxale-x-100"
+                        className="border-4 border-green-500 aspect-square w-md -scale-x-100"
                     ></video>
                     <span>(Remote Video Stream)</span>
                 </div>
@@ -134,7 +171,7 @@ const App = () => {
                     It is used to describe the media capabilities of the peers
                     and the supported media codec of the peer and some othe
                     information essential for establishing a connection. There
-                    is a type associated with the SDP object which cxan be of
+                    is a type associated with the SDP object which can be of
                     type offer or answer. Offer is the one who is initiating the
                     connection and the answer is the one who is accepting the
                     connection. So we will create <b>SDP offer</b> for the first
@@ -213,6 +250,57 @@ const App = () => {
                         onClick={handleRemoteSdpAnswer}
                     >
                         Add SDP Answer
+                    </button>
+                </div>
+            </section>
+
+            <hr className="mx-4 bg-black mt-4" />
+
+            {/* Ice candidates section */}
+            <section className="p-4 flex flex-col gap-2">
+                <p className="bg-yellow-200 px-4 py-8">
+                    <b>
+                        ICE (Interactivity Connectivity Establishment)
+                        Candidates:
+                    </b>{" "}
+                    This is a protocol which is used by the WebRTC in order to
+                    get the public information about the peer like the{" "}
+                    <b>public IP address</b> at which the peer is accessible and
+                    some other information. Generally we will use a STUN or TURN
+                    if you are unlucky for generating these Ice Candidates but
+                    in this canse we are using <b>localhost</b> due to which we
+                    do not need a STUN/TURN server.
+                </p>
+
+                <div className="flex flex-col items-start gap-2">
+                    <div className="w-full border-2 border-black flex items-center">
+                        <textarea
+                            ref={localIceCandidates}
+                            // placeholder="Local peer ICE candidates"
+                            className="p-2 w-full h-40 outline-none"
+                        />
+                    </div>
+                    <button
+                        className="bg-black px-4 py-2 text-sm font-semibold text-white hover:opacity-50 active:scale-95 transition-all duration-100 ease-in-out hover:cursor-pointer"
+                        onClick={handleLocalIce}
+                    >
+                        Click to generate ICE candidates
+                    </button>
+                </div>
+
+                <div className="flex flex-col items-start gap-2">
+                    <div className="w-full border-2 border-black flex items-center">
+                        <textarea
+                            ref={remoteIceCandidates}
+                            // placeholder="Remote peer ICE candidates"
+                            className="p-2 w-full h-40 blur-xs outline-none"
+                        />
+                    </div>
+                    <button
+                        className="bg-black px-4 py-2 text-sm font-semibold text-white hover:opacity-50 active:scale-95 transition-all duration-100 ease-in-out hover:cursor-pointer"
+                        onClick={handleRemoteIce}
+                    >
+                        Click to add remote ICE candidates
                     </button>
                 </div>
             </section>
