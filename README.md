@@ -3,4 +3,3 @@
 
 # Why this project?
 - As someone who has just strated with WebRTC protocol and is struggling to get his head around all sort of different APIs that you WebRTC provides, this is a good project demostrating all the basic stuff that goes into establishing a successful connection.
-- 
